@@ -2,14 +2,15 @@ import codecs, logging, sys
 from base64 import urlsafe_b64encode as b64encode
 from uuid import uuid4
 from time import time
+from warnings import warn
 
 import eventlet
 from bithorde import parseHashIds, message
 from db import ValueSet
 
-if not sys.stdout.encoding:
+if not getattr(sys.stdout, 'encoding', None):
     sys.stdout = codecs.getwriter('utf8')(sys.stdout)
-if not sys.stderr.encoding:
+if not getattr(sys.stderr, 'encoding', None):
     sys.stderr = codecs.getwriter('utf8')(sys.stderr)
 
 class DelayedAction(object):
@@ -25,21 +26,107 @@ class DelayedAction(object):
         self._scheduled = None
         self.action()
 
-ASSET_WAIT_FACTOR = 0.01
 def hasValidStatus(dbAsset, t=time()):
-    try:
+    try: # New status
+        availability = dbAsset['bh_availability']
+        available = float(availability.any(0))
+
+        if abs(available) > (t - availability.t):
+            return available > 0
+        else:
+            return None
+    except:
+        pass
+
+    try: # Legacy
         dbStatus = dbAsset['bh_status']
         dbConfirmedStatus = dbAsset['bh_status_confirmed']
-    except KeyError:
-        return None
-    stable = dbConfirmedStatus.t - dbStatus.t
-    nextCheck = dbConfirmedStatus.t + (stable * ASSET_WAIT_FACTOR)
-    if t < nextCheck:
-        return dbStatus.any() == 'True'
-    else:
-        return None
 
-def cachedAssetLiveChecker(bithorde, assets, db=None):
+        stable = dbConfirmedStatus.t - dbStatus.t
+        nextCheck = dbConfirmedStatus.t + stable
+        if t < nextCheck:
+            return dbStatus.any() == 'True'
+        else:
+            return None
+    except:
+        pass
+
+    return None
+
+def _objectAvailability(dbAsset, t):
+    '''Returns (bool(lastCheck), time_since_check)'''
+    try:
+        dbAvailability = dbAsset[u'bh_availability']
+        avail = float(dbAvailability.any(0))
+        time_since_check = t - dbStatus.t
+        return avail, time_since_check
+    except:
+        pass
+
+    try:
+        dbStatus = dbAsset[u'bh_status']
+        dbConfirmedStatus = dbAsset[u'bh_status_confirmed']
+        time_since_check = (t - dbConfirmedStatus.t)
+        if dbStatus.any() == 'True':
+            avail = dbConfirmedStatus.t - dbStatus.t
+        else:
+            avail = -(dbConfirmedStatus.t - dbStatus.t)
+        return avail, time_since_check
+    except:
+        pass
+
+    return None, None
+
+ASSET_WAIT_FACTOR = 0.02
+def calcNewAvailability(status_ok, avail, time_since_check):
+    if time_since_check is None: time_since_check = 1800
+    if avail is None: avail = 0
+
+    bonus = time_since_check * ASSET_WAIT_FACTOR
+
+    if status_ok:
+        if avail > 0:
+            return avail + bonus
+        else:
+            return bonus
+    else:
+        if avail < 0:
+            return avail - bonus
+        else:
+            return -bonus
+
+def testCalcNewAvailabilty():
+    assert calcNewAvailability(True, 500, 500) == 500 + (500*ASSET_WAIT_FACTOR)
+    assert calcNewAvailability(False, 500, 500) == -(500*ASSET_WAIT_FACTOR)
+    assert calcNewAvailability(True, -500, 500) == (500*ASSET_WAIT_FACTOR)
+    assert calcNewAvailability(False, -500, 500) == -500 + (-500*ASSET_WAIT_FACTOR)
+    assert calcNewAvailability(True, None, None) == 36
+    assert calcNewAvailability(False, None, None) == -36
+
+def updateFolderAvailability(db, item, newAvail, t):
+    if not db: return
+
+    tgt = t + newAvail
+
+    for dir_mapping in item.get(u'directory', []):
+        dir_mapping = dir_mapping.split('/', 1)
+        if not len(dir_mapping) == 2:
+            continue
+        (dir_id, _) = dir_mapping
+        directory = db.get(dir_id)
+
+        if not directory.empty():
+            objAvail = directory.get(u'bh_availability', 0)
+            if objAvail:
+                objAvail = objAvail.t + float(objAvail.any(0))
+            else:
+                objAvail = 0
+            if tgt > objAvail:
+                directory[u'bh_availability'] = ValueSet(unicode(newAvail), t=t)
+                db.update(directory)
+                updateFolderAvailability(db, directory, newAvail, t)
+
+def cachedAssetLiveChecker(bithorde, assets, force=False, db=None):
     t = time()
     dirty = Counter()
     if db:
@@ -47,7 +134,7 @@ def cachedAssetLiveChecker(bithorde, assets, db=None):
 
     def checkAsset(dbAsset):
         dbStatus = hasValidStatus(dbAsset, t)
-        if dbStatus is not None:
+        if dbStatus is not None and not force:
             eventlet.sleep() # Not sleeping here could starve other greenlets
             return dbAsset, dbStatus
 
@@ -58,8 +145,13 @@ def cachedAssetLiveChecker(bithorde, assets, db=None):
         with bithorde.open(ids) as bhAsset:
             status = bhAsset.status()
             status_ok = status and status.status == message.SUCCESS
-            dbAsset[u'bh_status'] = ValueSet((unicode(status_ok),), t=t)
-            dbAsset[u'bh_status_confirmed'] = ValueSet((unicode(t),), t=t)
+
+            avail, time_since_check = _objectAvailability(dbAsset, t)
+            newAvail = calcNewAvailability(status_ok, avail, time_since_check)
+            dbAsset[u'bh_availability'] = ValueSet(unicode(newAvail), t=t)
+            if newAvail > 0:
+                updateFolderAvailability(db, dbAsset, newAvail, t)
+
             if status and (status.size is not None):
                 if status.size > 2**40:
                     print dbAsset['xt']
