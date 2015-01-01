@@ -128,16 +128,25 @@ class Asset:
         return response and response.content
 
 class Client:
-    def __init__(self, config):
+    def __init__(self, config, autoconnect=True):
         self.config = config
         self._assets = {}
         self._handleAllocator = _Allocator()
-        self._pool = eventlet.GreenPool(config['pressure'])
-        self._connection = Connection(config['address'], config.get('myname', 'bhindex'))
-        self._reader = eventlet.spawn(self._reader)
 
         self._reqIdAllocator = _Allocator()
         self._pendingReads = dict()
+
+        self._pool = eventlet.GreenPool(config['pressure'])
+
+        if autoconnect:
+            self.connect()
+
+    def connect(self, address=None):
+        config = self.config
+        if not address:
+            address = config['address']
+        self._connection = Connection(address, config.get('myname', 'bhindex'))
+        self._reader_greenlet = eventlet.spawn(self._reader)
 
     def __repr__(self):
         return "Client(peername=%s)" % self._connection.peername
