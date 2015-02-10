@@ -17,7 +17,7 @@ from llfuse import FUSEError
 from eventlet.pools import Pool
 import itertools
 
-from util import hasValidStatus
+from util import hasValidStatus, timed
 
 log = logging.getLogger()
 
@@ -185,11 +185,11 @@ class Operations(llfuse.Operations):
         except KeyError:
             raise(llfuse.FUSEError(errno.ENOENT))
 
+    @timed
     def lookup(self, inode_p, name):
         inode_p = self._inode_resolve(inode_p, Directory)
         inode = inode_p.lookup(name.decode('utf-8'))
         self.inodes[inode.ino] = inode
-
         return inode.attr()
 
     def forget(self, inodes):
@@ -208,6 +208,7 @@ class Operations(llfuse.Operations):
         inode = self._inode_resolve(inode, Directory)
         return inode.ino
 
+    @timed
     def readdir(self, inode, off):
         if off:
             return
@@ -230,8 +231,8 @@ def init_logging():
     formatter = logging.Formatter('%(message)s')
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
-    handler.setLevel(logging.INFO)
-    log.setLevel(logging.INFO)
+    handler.setLevel(logging.DEBUG)
+    log.setLevel(logging.DEBUG)
     log.addHandler(handler)
 
 if __name__ == '__main__':
