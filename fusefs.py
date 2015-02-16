@@ -14,7 +14,6 @@ import sqlite3
 import logging
 from collections import defaultdict
 
-from eventlet.pools import Pool
 import itertools
 
 from util import hasValidStatus, timed
@@ -36,8 +35,21 @@ current_gid = os.getgid()
 
 ino_source = itertools.count(1)
 fh_source = itertools.count(1)
-ino_pool = Pool(create=lambda: next(ino_source), max_size=2**30)
-fh_pool = Pool(create=lambda: next(fh_source), max_size=2**30)
+
+class Pool(set):
+    def __init__(self, create):
+        self._create = create
+        set.__init__(self)
+    def get(self):
+        try:
+            return self.pop()
+        except KeyError:
+            return self._create()
+    def put(self, x):
+        self.add(x)
+
+ino_pool = Pool(create=lambda: next(ino_source))
+fh_pool = Pool(create=lambda: next(fh_source))
 
 class INode(object):
     MODE_0755 = stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
