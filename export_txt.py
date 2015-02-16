@@ -8,8 +8,6 @@ import subprocess
 from bithorde.eventlet import Client, parseConfig
 from util import cachedAssetLiveChecker, Counter, Progress
 
-import eventlet
-
 HERE = path.dirname(__file__)
 sys.path.append(HERE)
 

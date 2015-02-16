@@ -15,7 +15,6 @@ import logging
 from collections import defaultdict
 
 from eventlet.pools import Pool
-import eventlet
 import itertools
 
 from util import hasValidStatus, timed
@@ -328,8 +327,6 @@ if __name__ == '__main__':
         self, mountpoint = sys.argv
     except:
         raise SystemExit('Usage: %s <mountpoint>' % sys.argv[0])
-
-    from eventlet import hubs
 
     bithorde = Client(parseConfig(config.items('BITHORDE')), autoconnect=False)
     bithorde.connect()
