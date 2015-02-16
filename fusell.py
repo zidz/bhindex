@@ -25,9 +25,7 @@ from inspect import getmembers, ismethod
 from platform import machine, system
 from stat import S_IFDIR, S_IFREG
 
-from eventlet.greenthread import getcurrent
-from eventlet.green import socket
-from eventlet.greenpool import GreenPool
+from concurrent import Pool, trampoline
 
 _system = system()
 _machine = machine()
@@ -304,21 +302,17 @@ class FUSELL(object):
         chan = self.libfuse.fuse_mount(mountpoint, argv)
         assert chan
 
-        self.pool = GreenPool(size=64)
+        self.pool = Pool(size=32)
 
         with guard(self.libfuse.fuse_unmount, mountpoint, chan):
             self._fuse_run_session(chan, argv)
 
     def _dispatcher(self, method):
-        call_thread = getcurrent()
         def _handler(req, *args):
             try:
                 return method(req, *args)
             except FUSEError, e:
                 return self.reply_err(req, e.errno)
-            except Exception, e:
-                call_thread.throw(*exc_info())
-                return
         def _dispatch(req, *args):
             # Copy pointer-values in args. They will not be valid later
             args = [copy_value(x) for x in args]
@@ -327,7 +321,6 @@ class FUSELL(object):
 
     def _fuse_run_session(self, chan, argv):
         fuse_ops = fuse_lowlevel_ops()
-        import eventlet
 
         for name, prototype in fuse_lowlevel_ops._fields_:
             method = getattr(self, 'fuse_' + name, None) or getattr(self, name, None)
@@ -347,7 +340,7 @@ class FUSELL(object):
                 fd = self.libfuse.fuse_chan_fd(chan)
                 self.exc_info = ()
                 while not self.exc_info:
-                    eventlet.hubs.trampoline(fd, read=True)
+                    trampoline(fd, read=True)
                     data = create_string_buffer(64*1024)
                     read = self.libfuse.fuse_chan_recv(c_void_p_p(c_void_p(chan)), data, len(data))
                     assert read > 0

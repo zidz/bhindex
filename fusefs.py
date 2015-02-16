@@ -62,7 +62,6 @@ class INode(object):
     def __del__(self):
         ino_pool.put(self.ino)
 
-
     def entry(self):
         entry = fusell.fuse_entry_param()
         entry.ino = self.ino
