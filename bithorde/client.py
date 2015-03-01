@@ -174,8 +174,8 @@ class Client:
                 with concurrent.Timeout(timeout, False):
                     response = respond.wait()
         finally:
-            self._reqIdAllocator.free(reqId)
             del self._pendingReads[reqId]
+            self._reqIdAllocator.free(reqId)
 
         return response
 
@@ -218,10 +218,14 @@ class Client:
     def _processReadResponse(self, response):
         try:
             event = self._pendingReads[response.reqId]
+            self._pendingReads[response.reqId] = None
         except KeyError:
             logger.warn("Ignoring unrecognized %s ReadResponse", str(response)[:1024])
             return
-        event.send(response)
+        if event:
+            event.send(response)
+        else:
+            logger.warn("ReadResponse %d recieved twice", response.reqId)
 
 def parseConfig(c):
     return dict(
