@@ -92,31 +92,6 @@ class INode(object):
 
         return attr
 
-class Timed:
-    def __init__(self, tag):
-        self.tag = tag
-
-    def __enter__(self):
-        self.start = time()
-        return self
-
-    def __exit__(self, type, value, traceback):
-        delta = (time() - self.start) * 1000
-        log.debug("<%s>: %.1fms" % (self.tag, delta))
-
-def timed(method):
-    def timed(*args, **kw):
-        with Timed("%r (%r, %r)" % (method.__name__, args, kw)):
-            res = method(*args, **kw)
-            if isinstance(res, GeneratorType):
-                return list(res)
-            else:
-                return res
-
-        return result
-
-    return timed
-
 import db, config
 config = config.read()
 DB=db.open(config.get('DB', 'file'))
@@ -245,7 +220,6 @@ class Operations(fusell.FUSELL):
         except KeyError:
             raise(fusell.FUSEError(errno.ENOENT))
 
-    @timed
     def lookup(self, inode_p, name):
         inode_p = self._inode_resolve(inode_p, Directory)
         inode = inode_p.lookup(name.decode('utf-8'))
@@ -267,7 +241,6 @@ class Operations(fusell.FUSELL):
         inode = self._inode_resolve(inode, Directory)
         return inode.ino
 
-    @timed
     def readdir(self, inode, off):
         if off:
             return
@@ -283,7 +256,6 @@ class Operations(fusell.FUSELL):
     def releasedir(self, inode):
         pass
 
-    @timed
     def open(self, inode, flags):
         inode = self._inode_resolve(inode, File)
         supported_flags = os.O_RDONLY | os.O_LARGEFILE
@@ -296,7 +268,6 @@ class Operations(fusell.FUSELL):
         self.files[fh] = asset
         return fh
 
-    @timed
     def read(self, fh, off, size):
         try:
             f = self.files[fh]
