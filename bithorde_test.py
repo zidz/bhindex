@@ -1,5 +1,7 @@
-from bithorde.eventlet import *
-from bithorde import parseHashIds
+from bithorde import Client, parseHashIds
+
+import logging
+logging.basicConfig()
 
 if __name__ == '__main__':
     import sys

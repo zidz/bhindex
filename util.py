@@ -159,7 +159,7 @@ def cachedAssetLiveChecker(bithorde, assets, force=False, db=None):
     def checkAsset(dbAsset):
         dbStatus = hasValidStatus(dbAsset, t)
         if dbStatus is not None and not force:
-            concurrent.cede() # Not sleeping here could starve other greenlets
+            concurrent.sleep() # Not sleeping here could starve other greenlets
             return dbAsset, dbStatus
 
         ids = parseHashIds(dbAsset['xt'])
