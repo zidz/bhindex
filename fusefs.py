@@ -200,7 +200,7 @@ class Directory(INode):
                 yield name, inode
 
 class Operations(fusell.FUSELL):
-    def __init__(self, bithorde, mountpoint, options):
+    def __init__(self, bithorde, mountpoint, fuse_options):
         self.root = Directory((DB['dir:'],))
         self.inode_open_count = defaultdict(int)
 
@@ -210,7 +210,7 @@ class Operations(fusell.FUSELL):
         self.files = {}
 
         self.bithorde = bithorde
-        super(Operations, self).__init__(mountpoint, options)
+        super(Operations, self).__init__(mountpoint, fuse_options)
 
     def _inode_resolve(self, ino, cls=INode):
         try:
@@ -326,6 +326,6 @@ if __name__ == '__main__':
     try:
         print("Entering llfuse")
         fsopts = [ 'fsname=bhindex', 'nonempty', 'debug', 'allow_other', 'max_read=65536', 'ro' ]
-        operations = Operations(bithorde=bithorde, mountpoint=mountpoint, options=fsopts)
+        operations = Operations(bithorde=bithorde, mountpoint=mountpoint, fuse_options=fsopts)
     except Exception, e:
         log.exception("Error!")
