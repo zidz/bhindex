@@ -15,7 +15,7 @@
 from __future__ import division
 
 from ctypes import *
-from ctypes.util import find_library
+from ctypes.util import find_library as _find_library
 from contextlib import contextmanager
 from errno import *
 from sys import exc_info
@@ -24,6 +24,7 @@ from functools import partial, wraps
 from inspect import getmembers, ismethod
 from platform import machine, system
 from stat import S_IFDIR, S_IFREG
+from os import path
 
 from concurrent import Pool, trampoline
 
@@ -32,6 +33,17 @@ _machine = machine()
 
 ##### FUSE Low C-binding declarations #####
 c_void_p_p = POINTER(c_void_p)
+
+# Tries to locate a shared library, with fallbacks over ctypes.find_library
+def find_library(lib):
+    l = _find_library(lib)
+    if l: return l
+
+    for libpath in ('/usr/lib/libfuse.so',):
+        if path.exists(libpath):
+            return libpath
+
+    raise IOError("Shared library '%s' not found" % lib)
 
 class LibFUSE(CDLL):
     def __init__(self):
