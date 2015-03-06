@@ -170,16 +170,25 @@ class SyncConnection(object):
         self._last_serial_sent = last_serial
 
 class SyncServer(object):
-    def __init__(self, db, name, port, connectAddresses, db_poll_interval=0.5):
+    def __init__(self, db, name, connectAddresses, port=None, db_poll_interval=0.5):
         self._db = db
         self.name = name
-        self.port = port
+
         self.connections = dict()
+
         self.connectAddresses = connectAddresses
-        self._sock = concurrent.listen(('0.0.0.0', port))
-        self._server = concurrent.spawn(concurrent.serve, self._sock, self._spawn)
-        self._pusher = concurrent.spawn(self._db_push)
         self._connector = concurrent.spawn(self._connector)
+
+        if port:
+            self._sock = concurrent.listen(('0.0.0.0', port))
+            self._server = concurrent.spawn(concurrent.serve, self._sock, self._spawn)
+        else:
+            self._server = None
+
+        if db_poll_interval:
+            self._pusher = concurrent.spawn(self._db_push, db_poll_interval)
+        else:
+            self._pusher = None
 
     def _connectPeer(self, conn, connectAddress=None):
         peername = conn.peername
@@ -250,7 +259,7 @@ class SyncServer(object):
                     concurrent.spawn(self._spawn, sock, address, connectAddress=address)
             concurrent.sleep(30)
 
-    def _db_push(self):
+    def _db_push(self, db_poll_interval):
         while True:
             with self._db.transaction():
                 for conn in self.connections.values():
@@ -263,12 +272,14 @@ class SyncServer(object):
                         logging.exception("%s push hit error", conn.peername)
                         self.connections.pop(conn.peername, None)
                         conn.shutdown()
-            concurrent.sleep(0.5)
+            concurrent.sleep(db_poll_interval)
 
     def wait(self):
-        self._server.wait()
-        self._pusher.wait()
         self._connector.wait()
+        if self._server:
+            self._server.wait()
+        if self._pusher:
+            self._pusher.wait()
 
 def parse_addr(addr):
     addr = addr.strip()

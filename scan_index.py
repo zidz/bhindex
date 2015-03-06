@@ -65,4 +65,4 @@ if __name__=='__main__':
     (options, args) = parser.parse_args()
 
     count, size = main(verbose=options.verbose, all_objects=options.all_objects)
-    print("Exported %s assets totaling %s GB" % (count, size/(1024*1024*1024)))
+    print("Found %s assets totaling %s GB" % (count, size/(1024*1024*1024)))
