@@ -2,7 +2,7 @@
 
 from __future__ import division, print_function, absolute_import
 
-import atexit, os, sys, warnings
+import os, sys, warnings
 
 import fusell
 import errno
@@ -92,14 +92,10 @@ class INode(object):
 
         return attr
 
-import db, config
-config = config.read()
-DB=db.open(config.get('DB', 'file'))
-
 fields=set((u'directory', u'name', u'ext', u'xt', u'bh_status', u'bh_status_confirmed', u'bh_availability', u'filesize'))
-def scan(directory_obj):
+def scan(database, directory_obj):
     dir_prefix = directory_obj.id+'/'
-    for obj in DB.query({u'directory': db.Starts(dir_prefix)}, fields=fields):
+    for obj in database.query({u'directory': db.Starts(dir_prefix)}, fields=fields):
         name_found = 0
         for directory in obj['directory']:
             if directory.startswith(dir_prefix):
@@ -117,16 +113,6 @@ def scan(directory_obj):
                 else:
                     name += ".%s" % obj.any('ext')
             yield name, obj
-
-def map_objects(objs):
-    if any(o.any('xt') for o in objs):
-        if len(objs) > 1:
-            warnings.warn("TODO: Merge NON-directories")
-        else:
-            return File(objs[0])
-    else:
-        return Directory(objs)
-
 
 class File(INode):
     def __init__(self, obj):
@@ -162,8 +148,9 @@ class Symlink(INode):
         return hasValidStatus(self.obj)
 
 class Directory(INode):
-    def __init__(self, objs):
+    def __init__(self, database, objs):
         super(Directory, self).__init__()
+        self.database = database
         self.objs = objs
 
     def attr(self):
@@ -176,32 +163,41 @@ class Directory(INode):
     def is_available(self):
         return hasValidStatus(self.objs)
 
+    def _map_objects(self, objs):
+        if any(o.any('xt') for o in objs):
+            if len(objs) > 1:
+                warnings.warn("TODO: Merge NON-directories")
+            else:
+                return File(objs[0])
+        else:
+            return Directory(self.database, objs)
+
     def lookup(self, name):
         objs = list()
         for obj in self.objs:
-            objs += DB.query({u'directory': u'%s/%s' % (obj.id, name)}, fields=fields)
+            objs += self.database.query({u'directory': u'%s/%s' % (obj.id, name)}, fields=fields)
 
         if not objs:
             raise(fusell.FUSEError(errno.ENOENT))
 
-        return map_objects(objs)
+        return self._map_objects(objs)
 
     def readdir(self):
         children = dict()
         for obj in self.objs:
-            for name, obj in scan(obj):
+            for name, obj in scan(self.database, obj):
                 if not hasValidStatus(obj):
                     continue
                 children.setdefault(name, []).append(obj)
 
         for name, objs in children.iteritems():
-            inode = map_objects(objs)
+            inode = self._map_objects(objs)
             if inode:
                 yield name, inode
 
 class Operations(fusell.Filesystem):
-    def __init__(self, bithorde):
-        self.root = Directory((DB['dir:'],))
+    def __init__(self, database, bithorde):
+        self.root = Directory(database, (database['dir:'],))
         self.inode_open_count = defaultdict(int)
 
         self.inodes = {
@@ -301,24 +297,42 @@ def init_logging():
     log.setLevel(logging.DEBUG)
     log.addHandler(handler)
 
+class ensuredir:
+    def __init__(self, dir):
+        self.dir = dir
+    def __enter__(self):
+        if os.path.exists(self.dir):
+            self.dir = None
+        else:
+            os.mkdir(self.dir)
+        return self.dir
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.dir:
+            os.rmdir(self.dir)
+
+def run(database, bithorde, mountpoint):
+    fsopts = ['fsname=bhindex', 'nonempty', 'debug', 'allow_other', 'max_read=65536', 'ro' ]
+    fs = Operations(database=database, bithorde=bithorde)
+
+    with ensuredir(mountpoint):
+        fusell.FUSELL(filesystem=fs, mountpoint=mountpoint, fuse_options=fsopts)
+
 if __name__ == '__main__':
+    import db, config
+
     init_logging()
     try:
         self, mountpoint = sys.argv
     except:
         raise SystemExit('Usage: %s <mountpoint>' % sys.argv[0])
 
+    config = config.read()
+    database=db.open(config.get('DB', 'file'))
+
     bithorde = Client(parseConfig(config.items('BITHORDE')), autoconnect=False)
     bithorde.connect()
 
-    if not os.path.exists(mountpoint):
-        os.mkdir(mountpoint)
-        atexit.register(lambda: os.rmdir(mountpoint))
-
     try:
-        print("Entering llfuse")
-        fsopts = [ 'fsname=bhindex', 'nonempty', 'debug', 'allow_other', 'max_read=65536', 'ro' ]
-        fs = Operations(bithorde=bithorde)
-        fusell.FUSELL(filesystem=fs, mountpoint=mountpoint, fuse_options=fsopts)
+        run(database, bithorde, mountpoint)
     except Exception, e:
         log.exception("Error!")
