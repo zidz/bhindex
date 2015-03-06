@@ -16,7 +16,6 @@ from __future__ import division
 
 from ctypes import *
 from ctypes.util import find_library as _find_library
-from contextlib import contextmanager
 from errno import *
 from sys import exc_info
 from math import modf
@@ -287,10 +286,15 @@ class FUSEError(Exception):
 
         self.errno = errno
 
-@contextmanager
-def guard(f, *args, **kwargs):
-    yield
-    f(*args, **kwargs)
+class guard:
+    def __init__(self, f, *args, **kwargs):
+        self.f = f
+        self.args = args
+        self.kwargs = kwargs
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.f(*self.args, **self.kwargs)
 
 def copy_value(x):
     if hasattr(x, 'contents') and issubclass(x._type_, Structure):
