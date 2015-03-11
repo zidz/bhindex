@@ -309,8 +309,12 @@ class ensuredir:
         if self.dir:
             os.rmdir(self.dir)
 
-def run(database, bithorde, mountpoint):
-    fsopts = ['fsname=bhindex', 'nonempty', 'debug', 'allow_other', 'max_read=65536', 'ro' ]
+def run(database, bithorde, mountpoint, debug=True, fsname='bhindex'):
+    fsopts = ['nonempty', 'allow_other', 'max_read=65536', 'ro' ]
+    fsopts.append('fsname=%s' % fsname)
+    if debug:
+        fsopts.append('debug')
+
     fs = Operations(database=database, bithorde=bithorde)
 
     with ensuredir(mountpoint):
