@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-import db, config, sys, logging
+import sys, logging
 import sync_pb2
 from cStringIO import StringIO
 
-import concurrent
-from concurrent import socket
+from . import concurrent, config, db
+from .concurrent import socket
 from google.protobuf.message import Message
 from google.protobuf.internal.encoder import MessageEncoder
 

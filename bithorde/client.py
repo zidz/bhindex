@@ -6,7 +6,7 @@ from collections import deque
 
 from .protocol import decodeMessage, encodeMessage, message
 
-import concurrent
+from .. import concurrent
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from __future__ import division, print_function, absolute_import
 
 import os, sys, warnings
 
-import fusell
+from . import fusell
 import errno
 import stat
 import os.path as path
@@ -16,9 +16,8 @@ from collections import defaultdict
 
 import itertools
 
-from util import hasValidStatus, timed
-
-from bithorde import Client, parseConfig, parseHashIds, message
+from .util import hasValidStatus, timed
+from .bithorde import Client, parseConfig, parseHashIds, message
 
 log = logging.getLogger()
 
@@ -95,7 +94,7 @@ class INode(object):
 fields=set((u'directory', u'name', u'ext', u'xt', u'bh_status', u'bh_status_confirmed', u'bh_availability', u'filesize'))
 def scan(database, directory_obj):
     dir_prefix = directory_obj.id+'/'
-    for obj in database.query({u'directory': db.Starts(dir_prefix)}, fields=fields):
+    for obj in database.query({u'directory': database.Starts(dir_prefix)}, fields=fields):
         name_found = 0
         for directory in obj['directory']:
             if directory.startswith(dir_prefix):

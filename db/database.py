@@ -1,7 +1,7 @@
 import contextlib
 from time import time
 
-import concurrent
+from .. import concurrent
 import sqlite3
 
 from obj import Object, ValueSet

@@ -4,9 +4,9 @@ from uuid import uuid4
 from time import time
 from warnings import warn
 
-import concurrent
-from bithorde import parseHashIds, message
-from db import ValueSet
+from . import concurrent
+from .bithorde import parseHashIds, message
+from .db import ValueSet
 
 if not getattr(sys.stdout, 'encoding', None):
     sys.stdout = codecs.getwriter('utf8')(sys.stdout)
