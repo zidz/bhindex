@@ -296,29 +296,38 @@ def init_logging():
     log.setLevel(logging.DEBUG)
     log.addHandler(handler)
 
-class ensuredir:
-    def __init__(self, dir):
-        self.dir = dir
-    def __enter__(self):
-        if os.path.exists(self.dir):
-            self.dir = None
+class FUSEFS(fusell.FUSELL):
+    def __init__(self, database, bithorde, mountpoint, debug=True, fsname='bhindex'):
+        fsopts = ['nonempty', 'allow_other', 'max_read=65536', 'ro' ]
+        fsopts.append('fsname=%s' % fsname)
+        if debug:
+            fsopts.append('debug')
+
+        fs = Operations(database=database, bithorde=bithorde)
+
+        if os.path.exists(mountpoint):
+            self._dir = None
         else:
-            os.mkdir(self.dir)
-        return self.dir
+            self._dir = mountpoint
+            os.mkdir(mountpoint)
+
+        fusell.FUSELL.__init__(self, filesystem=fs, mountpoint=mountpoint, fuse_options=fsopts)
+
+    def __enter__(self):
+        return self
+
+    def run(self):
+        with self:
+            fusell.FUSELL.run(self)
+
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.dir:
-            os.rmdir(self.dir)
+        self.cleanup()
 
-def run(database, bithorde, mountpoint, debug=True, fsname='bhindex'):
-    fsopts = ['nonempty', 'allow_other', 'max_read=65536', 'ro' ]
-    fsopts.append('fsname=%s' % fsname)
-    if debug:
-        fsopts.append('debug')
-
-    fs = Operations(database=database, bithorde=bithorde)
-
-    with ensuredir(mountpoint):
-        fusell.FUSELL(filesystem=fs, mountpoint=mountpoint, fuse_options=fsopts)
+    def cleanup(self):
+        self.unmount()
+        if self._dir:
+            os.rmdir(self._dir)
+            self._dir = None
 
 if __name__ == '__main__':
     import db, config
@@ -336,6 +345,6 @@ if __name__ == '__main__':
     bithorde.connect()
 
     try:
-        run(database, bithorde, mountpoint)
+        FUSEFS(database, bithorde, mountpoint).run()
     except Exception, e:
         log.exception("Error!")
